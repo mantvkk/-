@@ -1,0 +1,86 @@
+import streamlit as st
+from google import genai
+
+# 페이지 기본 설정
+st.set_page_config(page_title="Gemini AI 맞춤 도서 추천", page_icon="📚")
+
+st.title("📚 Gemini AI 실시간 맞춤 도서 추천 서비스")
+st.write("원하시는 장르, 작가, 키워드를 알려주시면 Gemini가 당신만을 위한 책을 실시간으로 분석하여 추천해 드립니다!")
+
+st.divider()
+
+# Streamlit Secrets에서 안전하게 API 키 가져오기
+try:
+    api_key = st.secrets["GEMINI_API_KEY"]
+except Exception:
+    st.error("⚠️ API 키가 설정되지 않았습니다. Streamlit Cloud의 Settings > Secrets에 'GEMINI_API_KEY'를 등록해 주세요.")
+    st.stop()
+
+# 1. 장르 선택
+genre = st.selectbox(
+    "1. 어떤 장르의 책을 원하시나요?",
+    ["선택해 주세요", "인문/철학", "문학/소설", "과학/IT", "자기계발", "에세이/시", "자율 입력"]
+)
+
+# 2. 세부 질문들
+if genre != "선택해 주세요":
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        author = st.text_input(
+            "2. 좋아하는 작가나 유사한 스타일의 작가가 있나요? (선택)",
+            placeholder="예: 유발 하라리, 히가시노 게이고, 김영하"
+        )
+        
+    with col2:
+        keywords = st.text_input(
+            "3. 어떤 느낌/주제의 책인가요? (선택)",
+            placeholder="예: 따뜻한 위로, 반전이 있는, 입문자용, 우주와 인류"
+        )
+        
+    situation = st.text_area(
+        "4. 지금 어떤 상황이거나 고민이 있으신가요? (선택)",
+        placeholder="예: 최근 번아웃이 와서 마음을 정돈하고 싶어요 / 새로운 프로그래밍 언어를 배우는 중이에요"
+    )
+
+    st.divider()
+
+    # 3. 추천받기 버튼
+    if st.button("✨ Gemini AI에게 맞춤 책 추천받기"):
+        # 로딩 애니메이션
+        with st.spinner("Gemini AI가 입력하신 정보를 바탕으로 최고의 도서를 찾는 중입니다..."):
+            try:
+                # Gemini 클라이언트 생성
+                client = genai.Client(api_key=api_key)
+                
+                # AI에게 전달할 프롬프트 구성
+                prompt = f"""
+                당신은 전문 도서 추천가이자 사서입니다. 사용자의 요청 사항에 맞춰 가장 적절한 책 3권을 추천해 주세요.
+
+                [사용자 요청 정보]
+                - 희망 장르: {genre}
+                - 선호 작가/스타일: {author if author else '없음'}
+                - 핵심 키워드/느낌: {keywords if keywords else '없음'}
+                - 현재 상황/고민: {situation if situation else '없음'}
+
+                [응답 형식]
+                각 책마다 다음 항목을 포함해서 깔끔하고 보기 쉽게 작성해 주세요:
+                1. **책 제목** (저자 / 출판사)
+                2. **한 줄 요약**
+                3. **이 책을 추천하는 이유** (사용자의 상황/취향과 연결해서 설명)
+                4. **함께 읽으면 좋은 포인트**
+                """
+
+                # Gemini API 호출 (gemini-3.8-flash 모델)
+                response = client.models.generate_content(
+                    model='gemini-3.8-flash',
+                    contents=prompt,
+                )
+
+                # 결과 출력
+                st.success("🎉 Gemini AI 맞춤 도서 추천 결과가 도착했습니다!")
+                st.markdown(response.text)
+
+            except Exception as e:
+                st.error(f"오류가 발생했습니다: {e}")
