@@ -1,5 +1,7 @@
 import streamlit as st
+import time
 from google import genai
+from google.genai.errors import APIError
 
 # 페이지 기본 설정
 st.set_page_config(page_title="Gemini AI 맞춤 도서 추천", page_icon="📚")
@@ -48,39 +50,49 @@ if genre != "선택해 주세요":
 
     # 3. 추천받기 버튼
     if st.button("✨ Gemini AI에게 맞춤 책 추천받기"):
-        # 로딩 애니메이션
         with st.spinner("Gemini AI가 입력하신 정보를 바탕으로 최고의 도서를 찾는 중입니다..."):
-            try:
-                # Gemini 클라이언트 생성
-                client = genai.Client(api_key=api_key)
-                
-                # AI에게 전달할 프롬프트 구성
-                prompt = f"""
-                당신은 전문 도서 추천가이자 사서입니다. 사용자의 요청 사항에 맞춰 가장 적절한 책 3권을 추천해 주세요.
+            client = genai.Client(api_key=api_key)
+            
+            prompt = f"""
+            당신은 전문 도서 추천가이자 사서입니다. 사용자의 요청 사항에 맞춰 가장 적절한 책 3권을 추천해 주세요.
 
-                [사용자 요청 정보]
-                - 희망 장르: {genre}
-                - 선호 작가/스타일: {author if author else '없음'}
-                - 핵심 키워드/느낌: {keywords if keywords else '없음'}
-                - 현재 상황/고민: {situation if situation else '없음'}
+            [사용자 요청 정보]
+            - 희망 장르: {genre}
+            - 선호 작가/스타일: {author if author else '없음'}
+            - 핵심 키워드/느낌: {keywords if keywords else '없음'}
+            - 현재 상황/고민: {situation if situation else '없음'}
 
-                [응답 형식]
-                각 책마다 다음 항목을 포함해서 깔끔하고 보기 쉽게 작성해 주세요:
-                1. **책 제목** (저자 / 출판사)
-                2. **한 줄 요약**
-                3. **이 책을 추천하는 이유** (사용자의 상황/취향과 연결해서 설명)
-                4. **함께 읽으면 좋은 포인트**
-                """
+            [응답 형식]
+            각 책마다 다음 항목을 포함해서 깔끔하고 보기 쉽게 작성해 주세요:
+            1. **책 제목** (저자 / 출판사)
+            2. **한 줄 요약**
+            3. **이 책을 추천하는 이유** (사용자의 상황/취향과 연결해서 설명)
+            4. **함께 읽으면 좋은 포인트**
+            """
 
-                # Gemini API 호출 (gemini-3.8-flash 모델)
-                response = client.models.generate_content(
-                    model='gemini-3.8-flash',
-                    contents=prompt,
-                )
+            # 503 과부하 에러 대비: 최대 3번까지 자동 재시도하는 로직
+            max_retries = 3
+            success = False
 
-                # 결과 출력
-                st.success("🎉 Gemini AI 맞춤 도서 추천 결과가 도착했습니다!")
-                st.markdown(response.text)
+            for attempt in range(max_retries):
+                try:
+                    response = client.models.generate_content(
+                        model='gemini-1.5-flash',
+                        contents=prompt,
+                    )
+                    st.success("🎉 Gemini AI 맞춤 도서 추천 결과가 도착했습니다!")
+                    st.markdown(response.text)
+                    success = True
+                    break # 성공 시 반복문 탈출
 
-            except Exception as e:
-                st.error(f"오류가 발생했습니다: {e}")
+                except APIError as e:
+                    # 503(과부하) 에러가 발생한 경우 잠시 대기 후 재시도
+                    if "503" in str(e) or "UNAVAILABLE" in str(e):
+                        if attempt < max_retries - 1:
+                            time.sleep(2) # 2초 대기
+                            continue
+                    st.error(f"구글 AI 서버 접속이 원활하지 않습니다 (503). 잠시 후 다시 버튼을 눌러주세요.")
+                    break
+                except Exception as e:
+                    st.error(f"오류가 발생했습니다: {e}")
+                    break
