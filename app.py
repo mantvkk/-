@@ -50,63 +50,81 @@ if genre != "선택해 주세요":
 
     # 3. 추천받기 버튼
     if st.button("✨ Gemini AI에게 맞춤 책 추천받기"):
-        with st.spinner("Gemini AI가 입력하신 정보를 바탕으로 최고의 도서를 찾는 중입니다..."):
-            client = genai.Client(api_key=api_key)
-            
-            prompt = f"""
-            당신은 전문 도서 추천가이자 사서입니다. 사용자의 요청 사항에 맞춰 가장 적절한 책 3권을 추천해 주세요.
+        # 실시간 상태를 보여주기 위한 영역 생성
+        status_container = st.empty()
+        status_container.info("🔄 Gemini AI 서버에 연결하는 중입니다... (답변 생성 **약 3~5초 소요** 예상)")
+        
+        client = genai.Client(api_key=api_key)
+        
+        prompt = f"""
+        당신은 전문 도서 추천가이자 사서입니다. 사용자의 요청 사항에 맞춰 가장 적절한 책 3권을 추천해 주세요.
 
-            [사용자 요청 정보]
-            - 희망 장르: {genre}
-            - 선호 작가/스타일: {author if author else '없음'}
-            - 핵심 키워드/느낌: {keywords if keywords else '없음'}
-            - 현재 상황/고민: {situation if situation else '없음'}
+        [사용자 요청 정보]
+        - 희망 장르: {genre}
+        - 선호 작가/스타일: {author if author else '없음'}
+        - 핵심 키워드/느낌: {keywords if keywords else '없음'}
+        - 현재 상황/고민: {situation if situation else '없음'}
 
-            [응답 형식]
-            각 책마다 다음 항목을 포함해서 깔끔하고 보기 쉽게 작성해 주세요:
-            1. **책 제목** (저자 / 출판사)
-            2. **한 줄 요약**
-            3. **이 책을 추천하는 이유** (사용자의 상황/취향과 연결해서 설명)
-            4. **함께 읽으면 좋은 포인트**
-            """
+        [응답 형식]
+        각 책마다 다음 항목을 포함해서 깔끔하고 보기 쉽게 작성해 주세요:
+        1. **책 제목** (저자 / 출판사)
+        2. **한 줄 요약**
+        3. **이 책을 추천하는 이유** (사용자의 상황/취향과 연결해서 설명)
+        4. **함께 읽으면 좋은 포인트**
+        """
 
-            # 503 과부하 에러 대비: 최대 3번까지 자동 재시도하는 로직
-            max_retries = 3
-            success = False
+        # 503 과부하 대비 스마트 자동 재시도 설정 (최대 5번까지 끈질기게 트라이)
+        max_retries = 5
+        success = False
 
-            for attempt in range(max_retries):
-                try:
-                    # 최신 표준 모델인 gemini-2.0-flash 사용
-                    response = client.models.generate_content(
-                        model='gemini-2.0-flash',
-                        contents=prompt,
-                    )
-                    st.success("🎉 Gemini AI 맞춤 도서 추천 결과가 도착했습니다!")
-                    st.markdown(response.text)
-                    success = True
-                    break # 성공 시 반복문 탈출
+        for attempt in range(max_retries):
+            try:
+                # 연결이 성공해 요청을 보낼 때도 예상 시간 안내 유지
+                status_container.info("✍️ Gemini AI가 맞춤 도서를 정성껏 작성 중입니다... (약 3~5초 소요)")
+                
+                response = client.models.generate_content(
+                    model='gemini-2.0-flash',
+                    contents=prompt,
+                )
+                
+                # 성공 시 상태 박스 비우고 결과 출력
+                status_container.empty()
+                st.success("🎉 Gemini AI 맞춤 도서 추천 결과가 도착했습니다!")
+                st.markdown(response.text)
+                success = True
+                break
 
-                except APIError as e:
-                    error_msg = str(e)
-                    
-                    # 1. 429 토큰 / 할당량 초과 처리
-                    if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
-                        st.error("⏳ 오늘 준비된 AI 무료 질문 토큰(할당량)을 모두 사용했거나, 단시간에 요청이 몰렸습니다. 1~2분 후 다시 시도해 주세요!")
-                        break
-                    
-                    # 2. 503 서버 과부하 처리 (자동 재시도)
-                    elif "503" in error_msg or "UNAVAILABLE" in error_msg:
-                        if attempt < max_retries - 1:
-                            time.sleep(2) # 2초 대기 후 다시 시도
-                            continue
-                        st.error("구글 AI 서버 접속이 원활하지 않습니다 (503). 잠시 후 다시 버튼을 눌러주세요.")
-                        break
-                    
-                    # 3. 기타 API 에러
-                    else:
-                        st.error(f"API 오류가 발생했습니다: {e}")
-                        break
-                        
-                except Exception as e:
-                    st.error(f"오류가 발생했습니다: {e}")
+            except APIError as e:
+                error_msg = str(e)
+                
+                # 429 토큰 초과는 재시도해도 소용없으므로 바로 중단
+                if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
+                    status_container.empty()
+                    st.error("⏳ 오늘 준비된 AI 무료 질문 토큰(할당량)을 모두 사용했거나 단시간 요청이 몰렸습니다. 잠시 후 다시 시도해 주세요!")
                     break
+                
+                # 503 서버 과부하인 경우: 대기 시간을 카운트하며 재시도
+                elif "503" in error_msg or "UNAVAILABLE" in error_msg:
+                    if attempt < max_retries - 1:
+                        wait_sec = (attempt + 1) * 2  # 2초, 4초, 6초... 증가
+                        status_container.warning(
+                            f"⚠️ 구글 AI 서버에 일시적인 과부하가 발생했습니다 (시도 {attempt+1}/{max_retries}).\n"
+                            f"서버 안정화를 위해 **약 {wait_sec}초 후** 자동으로 다시 시도합니다..."
+                        )
+                        time.sleep(wait_sec)
+                        continue
+                    else:
+                        status_container.empty()
+                        st.error("❌ 서버 과부하가 지속되어 연결에 실패했습니다. 1~2분 뒤에 버튼을 다시 눌러주세요.")
+                        break
+                
+                # 기타 에러
+                else:
+                    status_container.empty()
+                    st.error(f"API 오류가 발생했습니다: {e}")
+                    break
+                    
+            except Exception as e:
+                status_container.empty()
+                st.error(f"오류가 발생했습니다: {e}")
+                break
