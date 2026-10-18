@@ -3,6 +3,7 @@ import time
 from google import genai
 from google.genai.errors import APIError
 from openai import OpenAI
+from anthropic import Anthropic  # Claude 연동 라이브러리
 
 # 페이지 기본 설정 (브라우저 탭 이름)
 st.set_page_config(page_title="AI 사서의 도서 추천소", page_icon="📚")
@@ -20,8 +21,9 @@ except Exception:
     st.error("⚠️ Gemini API 키가 설정되지 않았습니다. Streamlit Cloud의 Settings > Secrets에 'GEMINI_API_KEY'를 등록해 주세요.")
     st.stop()
 
-# 완전 무료 백업용 Groq API 키 불러오기
+# 선택적 백업 API 키 불러오기 (Groq, Anthropic)
 groq_api_key = st.secrets.get("GROQ_API_KEY", None)
+anthropic_api_key = st.secrets.get("ANTHROPIC_API_KEY", None)
 
 # 1. 장르 선택
 genre = st.selectbox(
@@ -137,6 +139,36 @@ if genre != "선택해 주세요":
                     status_container.empty()
                     st.success(f"🎉 AI 사서의 맞춤 도서 추천 결과가 도착했습니다! (Groq {g_model} 회선)")
                     st.markdown(groq_response.choices[0].message.content)
+                    success = True
+                    break  # 성공 시 탈출
+
+                except Exception as e:
+                    time.sleep(1)
+                    continue
+
+        # ------------------------------------------------------------------
+        # [6~7차] Anthropic Claude 멀티 모델 순차 시도 (최종 Fallback)
+        # ------------------------------------------------------------------
+        claude_models = ['claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022']
+
+        if not success and anthropic_api_key:
+            claude_client = Anthropic(api_key=anthropic_api_key)
+
+            for c_model in claude_models:
+                try:
+                    status_container.warning(f"🔄 최종 백업 회선 전환: **Claude 회선({c_model})**으로 접속합니다...")
+
+                    claude_response = claude_client.messages.create(
+                        model=c_model,
+                        max_tokens=1500,
+                        messages=[
+                            {"role": "user", "content": prompt}
+                        ]
+                    )
+
+                    status_container.empty()
+                    st.success(f"🎉 AI 사서의 맞춤 도서 추천 결과가 도착했습니다! (Claude {c_model} 회선)")
+                    st.markdown(claude_response.content[0].text)
                     success = True
                     break  # 성공 시 탈출
 
