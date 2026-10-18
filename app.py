@@ -4,11 +4,12 @@ from google import genai
 from google.genai.errors import APIError
 from openai import OpenAI  # OpenAI 연동을 위한 라이브러리
 
-# 페이지 기본 설정
-st.set_page_config(page_title="Gemini AI 맞춤 도서 추천", page_icon="📚")
+# 페이지 기본 설정 (브라우저 탭 이름)
+st.set_page_config(page_title="AI 사서의 도서 추천소", page_icon="📚")
 
-st.title("📚 Gemini AI 실시간 맞춤 도서 추천 서비스")
-st.write("원하시는 장르, 작가, 키워드를 알려주시면 Gemini가 당신만을 위한 책을 실시간으로 분석하여 추천해 드립니다!")
+# 웹사이트 메인 타이틀
+st.title("📚 AI 사서의 도서 추천소")
+st.write("원하시는 장르, 작가, 키워드를 알려주시면 AI 사서가 당신만을 위한 맞춤형 책을 실시간으로 분석하여 추천해 드립니다!")
 
 st.divider()
 
@@ -52,10 +53,10 @@ if genre != "선택해 주세요":
 
     st.divider()
 
-    # 3. 추천받기 버튼
-    if st.button("✨ Gemini AI에게 맞춤 책 추천받기"):
+    # 3. 추천받기 버튼 (버튼 텍스트 변경)
+    if st.button("✨ AI 사서에게 맞춤 책 추천받기"):
         status_container = st.empty()
-        status_container.info("🔄 AI 서버에 연결하는 중입니다... (답변 생성 **약 3~5초 소요** 예상)")
+        status_container.info("🔄 AI 도서관 서버에 연결하는 중입니다... (답변 생성 **약 3~5초 소요** 예상)")
         
         prompt = f"""
         당신은 전문 도서 추천가이자 사서입니다. 사용자의 요청 사항에 맞춰 가장 적절한 책 3권을 추천해 주세요.
@@ -85,9 +86,9 @@ if genre != "선택해 주세요":
         for model_name in gemini_models:
             try:
                 if model_name == gemini_models[0]:
-                    status_container.info("✍️ Gemini AI가 맞춤 도서를 정성껏 작성 중입니다... (약 3~5초 소요)")
+                    status_container.info("✍️ AI 사서가 맞춤 도서를 정성껏 고르는 중입니다... (약 3~5초 소요)")
                 else:
-                    status_container.warning(f"🔄 서킷 브레이커 작동: 구글 백업 모델({model_name})로 우회 접속 중입니다...")
+                    status_container.warning(f"🔄 서킷 브레이커 작동: 1군 백업 회선({model_name})으로 우회 접속 중입니다...")
 
                 response = client.models.generate_content(
                     model=model_name,
@@ -95,7 +96,7 @@ if genre != "선택해 주세요":
                 )
                 
                 status_container.empty()
-                st.success("🎉 AI 맞춤 도서 추천 결과가 도착했습니다!")
+                st.success("🎉 AI 사서의 맞춤 도서 추천 결과가 도착했습니다!")
                 st.markdown(response.text)
                 success = True
                 break  # 성공 시 탈출
@@ -103,7 +104,6 @@ if genre != "선택해 주세요":
             except APIError as e:
                 error_msg = str(e)
                 if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
-                    # 토큰 초과는 구글 계정 한도이므로 바로 4차(OpenAI)로 넘어가거나 중단
                     break
                 time.sleep(1)
                 continue
@@ -128,7 +128,7 @@ if genre != "선택해 주세요":
                 )
                 
                 status_container.empty()
-                st.success("🎉 AI 맞춤 도서 추천 결과가 도착했습니다! (OpenAI 백업 회선)")
+                st.success("🎉 AI 사서의 맞춤 도서 추천 결과가 도착했습니다! (OpenAI 백업 회선)")
                 st.markdown(openai_response.choices[0].message.content)
                 success = True
 
@@ -138,4 +138,4 @@ if genre != "선택해 주세요":
         # 모든 회선(1~4차)이 최종 실패했을 경우
         if not success:
             status_container.empty()
-            st.error("❌ 현재 구글 및 OpenAI 모든 AI 서버 회선이 매우 혼잡합니다. 1~2분 뒤에 버튼을 다시 눌러주세요.")
+            st.error("❌ 현재 모든 AI 도서관 서가가 매우 혼잡합니다. 1~2분 뒤에 버튼을 다시 눌러주세요.")
