@@ -2,7 +2,7 @@ import streamlit as st
 import time
 from google import genai
 from google.genai.errors import APIError
-from openai import OpenAI  # OpenAI 연동을 위한 라이브러리
+from openai import OpenAI
 
 # 페이지 기본 설정 (브라우저 탭 이름)
 st.set_page_config(page_title="AI 사서의 도서 추천소", page_icon="📚")
@@ -20,8 +20,8 @@ except Exception:
     st.error("⚠️ Gemini API 키가 설정되지 않았습니다. Streamlit Cloud의 Settings > Secrets에 'GEMINI_API_KEY'를 등록해 주세요.")
     st.stop()
 
-# OpenAI API 키는 선택적으로 불러오기 (없어도 1~3차 구글 모델은 정상 작동)
-openai_api_key = st.secrets.get("OPENAI_API_KEY", None)
+# 완전 무료 백업용 Groq API 키 불러오기
+groq_api_key = st.secrets.get("GROQ_API_KEY", None)
 
 # 1. 장르 선택
 genre = st.selectbox(
@@ -53,7 +53,7 @@ if genre != "선택해 주세요":
 
     st.divider()
 
-    # 3. 추천받기 버튼 (버튼 텍스트 변경)
+    # 3. 추천받기 버튼
     if st.button("✨ AI 사서에게 맞춤 책 추천받기"):
         status_container = st.empty()
         status_container.info("🔄 AI 도서관 서버에 연결하는 중입니다... (답변 생성 **약 3~5초 소요** 예상)")
@@ -88,7 +88,7 @@ if genre != "선택해 주세요":
                 if model_name == gemini_models[0]:
                     status_container.info("✍️ AI 사서가 맞춤 도서를 정성껏 고르는 중입니다... (약 3~5초 소요)")
                 else:
-                    status_container.warning(f"🔄 서킷 브레이커 작동: 1군 백업 회선({model_name})으로 우회 접속 중입니다...")
+                    status_container.warning(f"🔄 서킷 브레이커 작동: 구글 백업 회선({model_name})으로 우회 접속 중입니다...")
 
                 response = client.models.generate_content(
                     model=model_name,
@@ -112,30 +112,39 @@ if genre != "선택해 주세요":
                 continue
 
         # ------------------------------------------------------------------
-        # [4차] 구글 모델들이 모두 실패했을 때 -> OpenAI (gpt-4o-mini)로 최종 우회!
+        # [4~5차] Groq 멀티 모델 순차 시도 (Fallback)
         # ------------------------------------------------------------------
-        if not success and openai_api_key:
-            try:
-                status_container.warning("🔄 구글 서버 트래픽 초과: **OpenAI (GPT-4o-mini)** 백업 회선으로 최종 우회 접속합니다...")
-                
-                openai_client = OpenAI(api_key=openai_api_key)
-                openai_response = openai_client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[
-                        {"role": "system", "content": "당신은 전문 도서 추천가이자 사서입니다."},
-                        {"role": "user", "content": prompt}
-                    ]
-                )
-                
-                status_container.empty()
-                st.success("🎉 AI 사서의 맞춤 도서 추천 결과가 도착했습니다! (OpenAI 백업 회선)")
-                st.markdown(openai_response.choices[0].message.content)
-                success = True
+        groq_models = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant']
+        
+        if not success and groq_api_key:
+            groq_client = OpenAI(
+                base_url="https://api.groq.com/openai/v1",
+                api_key=groq_api_key
+            )
+            
+            for g_model in groq_models:
+                try:
+                    status_container.warning(f"🔄 구글 서버 트래픽 초과: **Groq 백업 회선({g_model})**으로 우회 접속합니다...")
+                    
+                    groq_response = groq_client.chat.completions.create(
+                        model=g_model,
+                        messages=[
+                            {"role": "system", "content": "당신은 전문 도서 추천가이자 사서입니다."},
+                            {"role": "user", "content": prompt}
+                        ]
+                    )
+                    
+                    status_container.empty()
+                    st.success(f"🎉 AI 사서의 맞춤 도서 추천 결과가 도착했습니다! (Groq {g_model} 회선)")
+                    st.markdown(groq_response.choices[0].message.content)
+                    success = True
+                    break  # 성공 시 탈출
 
-            except Exception as e:
-                pass
+                except Exception as e:
+                    time.sleep(1)
+                    continue
 
-        # 모든 회선(1~4차)이 최종 실패했을 경우
+        # 모든 회선이 최종 실패했을 경우
         if not success:
             status_container.empty()
             st.error("❌ 현재 모든 AI 도서관 서가가 매우 혼잡합니다. 1~2분 뒤에 버튼을 다시 눌러주세요.")
