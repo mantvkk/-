@@ -76,8 +76,9 @@ if genre != "선택해 주세요":
 
             for attempt in range(max_retries):
                 try:
+                    # 최신 표준 모델인 gemini-2.0-flash 사용
                     response = client.models.generate_content(
-                        model='gemini-1.5-flash',
+                        model='gemini-2.0-flash',
                         contents=prompt,
                     )
                     st.success("🎉 Gemini AI 맞춤 도서 추천 결과가 도착했습니다!")
@@ -86,13 +87,26 @@ if genre != "선택해 주세요":
                     break # 성공 시 반복문 탈출
 
                 except APIError as e:
-                    # 503(과부하) 에러가 발생한 경우 잠시 대기 후 재시도
-                    if "503" in str(e) or "UNAVAILABLE" in str(e):
+                    error_msg = str(e)
+                    
+                    # 1. 429 토큰 / 할당량 초과 처리
+                    if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
+                        st.error("⏳ 오늘 준비된 AI 무료 질문 토큰(할당량)을 모두 사용했거나, 단시간에 요청이 몰렸습니다. 1~2분 후 다시 시도해 주세요!")
+                        break
+                    
+                    # 2. 503 서버 과부하 처리 (자동 재시도)
+                    elif "503" in error_msg or "UNAVAILABLE" in error_msg:
                         if attempt < max_retries - 1:
-                            time.sleep(2) # 2초 대기
+                            time.sleep(2) # 2초 대기 후 다시 시도
                             continue
-                    st.error(f"구글 AI 서버 접속이 원활하지 않습니다 (503). 잠시 후 다시 버튼을 눌러주세요.")
-                    break
+                        st.error("구글 AI 서버 접속이 원활하지 않습니다 (503). 잠시 후 다시 버튼을 눌러주세요.")
+                        break
+                    
+                    # 3. 기타 API 에러
+                    else:
+                        st.error(f"API 오류가 발생했습니다: {e}")
+                        break
+                        
                 except Exception as e:
                     st.error(f"오류가 발생했습니다: {e}")
                     break
